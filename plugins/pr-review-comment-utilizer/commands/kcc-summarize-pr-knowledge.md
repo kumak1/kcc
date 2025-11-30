@@ -9,9 +9,11 @@ description: 保存されているPRレビューの知識ファイルを解析�
 使用方法: /kcc-summarize-pr-knowledge [repository_pattern]
 
 実行手順:
-1. 環境変数 PR_REVIEW_KNOWLEDGE_PATH の確認とベースディレクトリ設定
-    - 未設定の場合: リポジトリルート/.claude（git rev-parse --show-toplevel）/.claude をデフォルトとして使用
-    - Gitリポジトリ外の場合: 現在のディレクトリ/.claude（pwd/.claude）をデフォルトとして使用
+1. 環境変数 PR_REVIEW_KNOWLEDGE_PATH の確認とベースディレクトリ設定（一度だけ実行）
+    - 環境変数が未設定または空の場合のみ、デフォルト値を設定
+    - デフォルト値: git リポジトリ内の場合は $(git rev-parse --show-toplevel 2>/dev/null)/.claude
+    - git リポジトリ外の場合は $(pwd)/.claude
+    - 設定後はその値を継続使用
 2. repository_pattern指定時は対象を絞り込み、未指定時は全リポジトリを対象
 3. pr-reviews ディレクトリ内の全Markdownファイルを収集・解析
 4. 技術的価値の高い知見を抽出・分類
@@ -227,44 +229,91 @@ ${PR_REVIEW_KNOWLEDGE_PATH}/knowledge/pr-reviews/github.com/*/*/pr-*-summary.md
 - [{タイトル}]({パス}) - {説明}
 ```
 
+実装されるBashスクリプト:
+```bash
+#!/bin/bash
+
+# 引数取得
+REPOSITORY_PATTERN=${1:-""}  # オプション引数
+
+# 環境変数の設定（一度だけ実行）
+if [ -z "$PR_REVIEW_KNOWLEDGE_PATH" ]; then
+    if git rev-parse --show-toplevel >/dev/null 2>&1; then
+        export PR_REVIEW_KNOWLEDGE_PATH="$(git rev-parse --show-toplevel)/.claude"
+        echo "ベースディレクトリを設定: $PR_REVIEW_KNOWLEDGE_PATH"
+    else
+        export PR_REVIEW_KNOWLEDGE_PATH="$(pwd)/.claude"
+        echo "ベースディレクトリを設定: $PR_REVIEW_KNOWLEDGE_PATH"
+    fi
+else
+    echo "既存のベースディレクトリを使用: $PR_REVIEW_KNOWLEDGE_PATH"
+fi
+
+# pr-reviewsディレクトリの存在確認
+PR_REVIEWS_DIR="$PR_REVIEW_KNOWLEDGE_PATH/knowledge/pr-reviews"
+if [ ! -d "$PR_REVIEWS_DIR" ]; then
+    echo "エラー: PRレビューファイルが見つかりません: $PR_REVIEWS_DIR"
+    echo "先に /kcc-save-pr-comments でPRデータを収集してください"
+    exit 1
+fi
+
+# summaryディレクトリの作成
+SUMMARY_DIR="$PR_REVIEWS_DIR/summary"
+mkdir -p "$SUMMARY_DIR"
+if [ $? -ne 0 ]; then
+    echo "エラー: サマリーディレクトリの作成に失敗しました: $SUMMARY_DIR"
+    exit 1
+fi
+
+echo "処理対象パターン: ${REPOSITORY_PATTERN:-'全リポジトリ'}"
+```
+
 実装アルゴリズム:
-1. **ファイル名生成フェーズ**
+1. **環境変数設定フェーズ（上記スクリプトに含まれる）**
+
+2. **ファイル名生成フェーズ**
    ```bash
    # repository_patternからファイル名を生成
    # 例: "microsoft/vscode" → "microsoft_vscode.md"
    # 例: "microsoft/*"     → "microsoft_all.md"
    # 例: 未指定             → "all.md"
 
-   filename=$(echo "$repository_pattern" | sed 's/\*/all/g' | sed 's/\//_/g')
+   filename=$(echo "$REPOSITORY_PATTERN" | sed 's/\*/all/g' | sed 's/\//_/g')
    if [ -z "$filename" ]; then
      filename="all"
    fi
    ```
 
-2. **ファイル収集フェーズ**
+3. **ファイル収集フェーズ**
    ```bash
    # 全てのPRサマリーファイルを取得
-   find "$PR_REVIEW_KNOWLEDGE_PATH/knowledge/pr-reviews" -name "pr-*-summary.md" -type f
+   find "$PR_REVIEWS_DIR" -name "pr-*-summary.md" -type f
 
    # repository_pattern指定時のフィルタリング
-   # パターンマッチングでファイルパスを絞り込み
+   if [ -n "$REPOSITORY_PATTERN" ]; then
+       # パターンマッチングでファイルパスを絞り込み
+       pattern_escaped=$(echo "$REPOSITORY_PATTERN" | sed 's/\*/[^\/]*/g')
+       find "$PR_REVIEWS_DIR" -name "pr-*-summary.md" -type f | grep -E "github\.com/$pattern_escaped/"
+   else
+       find "$PR_REVIEWS_DIR" -name "pr-*-summary.md" -type f
+   fi
    ```
 
-3. **コンテンツ解析フェーズ**
+4. **コンテンツ解析フェーズ**
    ```bash
    # 各ファイルからメタデータと技術的議論を抽出
    # セクション単位での内容分類
    # キーワード頻度分析
    ```
 
-4. **統合・分類フェーズ**
+5. **統合・分類フェーズ**
    ```bash
    # 類似する議論をグループ化
    # カテゴリ別の知見抽出
    # 統計情報の計算
    ```
 
-5. **時系列分析フェーズ**
+6. **時系列分析フェーズ**
    ```bash
    # PR作成日時による時系列ソート
    sort -t'-' -k3,3 -k4,4 pr_files_with_dates.txt
@@ -279,7 +328,7 @@ ${PR_REVIEW_KNOWLEDGE_PATH}/knowledge/pr-reviews/github.com/*/*/pr-*-summary.md
    # セキュリティ、パフォーマンス、テスト等の指標変化
    ```
 
-6. **未来ビジョン分析フェーズ**
+7. **未来ビジョン分析フェーズ**
    ```bash
    # 既存のビジョンファイル読み込み
    if [ -f "$PR_REVIEW_KNOWLEDGE_PATH/vision/architecture-vision.md" ]; then
@@ -297,15 +346,25 @@ ${PR_REVIEW_KNOWLEDGE_PATH}/knowledge/pr-reviews/github.com/*/*/pr-*-summary.md
    # 新技術キーワードの検出と既存ビジョンとの比較
    ```
 
-7. **出力生成フェーズ**
+8. **出力生成フェーズ**
    ```bash
-   # summaryディレクトリの作成
-   mkdir -p "$PR_REVIEW_KNOWLEDGE_PATH/knowledge/pr-reviews/summary"
+   # ファイル名の生成（上記のBashスクリプトから継続）
+   filename=$(echo "$REPOSITORY_PATTERN" | sed 's/\*/all/g' | sed 's/\//_/g')
+   if [ -z "$filename" ]; then
+     filename="all"
+   fi
+
+   # 最終的なサマリーファイルの保存
+   OUTPUT_FILE="$SUMMARY_DIR/${filename}.md"
 
    # Markdownテンプレートに統合結果を挿入
-   # ファイル参照リンクの生成
-   # 最終的なサマリーファイルの保存
-   output_file="$PR_REVIEW_KNOWLEDGE_PATH/knowledge/pr-reviews/summary/${filename}.md"
+   echo "統合サマリーを生成中: $OUTPUT_FILE"
+
+   # ここで実際のコンテンツ解析と統合処理を実行
+   # （技術的議論の抽出、分類、統計情報の計算など）
+
+   echo "✅ PRレビュー知識サマリーを保存しました: $OUTPUT_FILE"
+   echo "対象ファイル数: $file_count 件"
    ```
 
 エラーハンドリング:
@@ -344,16 +403,14 @@ ${PR_REVIEW_KNOWLEDGE_PATH}/knowledge/pr-reviews/github.com/*/*/pr-*-summary.md
 
 環境変数設定:
 ```bash
-# デフォルト: リポジトリルート/.claude配下に設定（推奨）
-export PR_REVIEW_KNOWLEDGE_PATH="$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.claude"
+# コマンド実行時に自動設定される（手動設定不要）
+# 環境変数が未設定の場合、以下のロジックで自動設定:
+# - Gitリポジトリ内: $(git rev-parse --show-toplevel)/.claude
+# - Gitリポジトリ外: $(pwd)/.claude
 
-# 例: ホームディレクトリ配下に設定
+# 手動で異なるパスを使用したい場合の例:
 export PR_REVIEW_KNOWLEDGE_PATH="$HOME/.claude"
-
-# 例: 専用ディレクトリに設定
 export PR_REVIEW_KNOWLEDGE_PATH="/path/to/your/notes"
-
-# 例: プロジェクトディレクトリ配下に設定
 export PR_REVIEW_KNOWLEDGE_PATH="$HOME/workspace/pr-knowledge"
 ```
 
