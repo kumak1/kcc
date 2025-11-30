@@ -22,8 +22,9 @@ description: 保存されているPRレビューの知識ファイルを解析�
 
 引数:
 - repository_pattern (オプション): 特定のリポジトリパターンで絞り込み
-    - 例: "microsoft/vscode" - 特定リポジトリのみ
-    - 例: "microsoft/*" - microsoft組織のすべてのリポジトリ
+  - 例: "microsoft/vscode" - 特定リポジトリのみ
+  - 例: "microsoft/*" - microsoft組織のすべてのリポジトリ
+  - 例: "*/vscode" - どの組織でも vscode という名前のリポジトリ
 
 収集対象:
 ```
@@ -276,6 +277,8 @@ echo "処理対象パターン: ${REPOSITORY_PATTERN:-'全リポジトリ'}"
    # repository_patternからファイル名を生成
    # 例: "microsoft/vscode" → "microsoft_vscode.md"
    # 例: "microsoft/*"     → "microsoft_all.md"
+   # 例: "*/vscode"        → "all_vscode.md"
+   # 例: "*"               → "all.md"
    # 例: 未指定             → "all.md"
 
    filename=$(echo "$REPOSITORY_PATTERN" | sed 's/\*/all/g' | sed 's/\//_/g')
@@ -394,6 +397,14 @@ echo "処理対象パターン: ${REPOSITORY_PATTERN:-'全リポジトリ'}"
 # Microsoft組織のすべてのリポジトリをサマリー化
 /kcc-summarize-pr-knowledge "microsoft/*"
 # → ${PR_REVIEW_KNOWLEDGE_PATH}/knowledge/pr-reviews/summary/microsoft_all.md
+
+# すべての組織のvscodeリポジトリをサマリー化
+/kcc-summarize-pr-knowledge "*/vscode"
+# → ${PR_REVIEW_KNOWLEDGE_PATH}/knowledge/pr-reviews/summary/all_vscode.md
+
+# ワイルドカードのみ
+/kcc-summarize-pr-knowledge "*"
+# → ${PR_REVIEW_KNOWLEDGE_PATH}/knowledge/pr-reviews/summary/all.md
 ```
 
 前提条件:
