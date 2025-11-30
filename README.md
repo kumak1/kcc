@@ -5,5 +5,9 @@ kcc is "Kumak1's Convenient tool for Claude"
 
 ```bash
 claude
-/plugin install kumak1/kcc
+/plugin
+
+# Select Add Marketplace
+
+kumak1/kcc
 ```
