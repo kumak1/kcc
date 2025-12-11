@@ -6,7 +6,7 @@
   "plugins": [
     {
       "name": "pr-review-comment-utilizer",
-      "source": "./pr-review-comment-utilizer",
+      "source": "./plugins/pr-review-comment-utilizer",
       "description": "A plugin to utilize PR review comments effectively.",
       "version": "0.1.0"
     }
